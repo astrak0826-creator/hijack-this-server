@@ -14,8 +14,8 @@ const io = new Server(server);
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ★ 본인의 JSONBin ID와 API 키를 넣어주세요
-const BIN_ID = '여기에_복사한_BIN_ID_입력';
-const API_KEY = '여기에_복사한_Master_Key_입력';
+const BIN_ID = '6ae4208bac6210605a5df4ce';
+const API_KEY = '$2a$10$f.isaInIxfslRDo2c53fvOx4egu6L6iZ2XU22IF2tEpyb1ycV.b.i ';
 
 const MAX_TOKENS = 5;
 const REFILL_MS = 10 * 60 * 1000; // 10분
