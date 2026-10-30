@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hacking Game</title>
+<script src="/socket.io/socket.io.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&amp;display=swap" rel="stylesheet">
+<style>
+:root{--bg:#070b09;--panel:#0c130f;--line:#1c3a2a;--g:#3dff8a;--dim:#6f9a82;--red:#ff5a5a}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;
+ background:var(--bg);color:var(--g);font-family:'JetBrains Mono',ui-monospace,Menlo,Consolas,monospace}
+.hidden{display:none!important}
+h1{margin:0 0 28px;font-size:22px;letter-spacing:.18em;text-transform:uppercase;font-weight:700}
+h1::before{content:'> ';color:var(--dim)}
+h1::after{content:'_';animation:blink 1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+.wrap{display:flex;flex-direction:column;align-items:center;width:100%;max-width:420px}
+#mainBox{width:320px;min-height:190px;background:var(--panel);border:1px solid var(--g);border-radius:3px;
+ box-shadow:0 0 22px rgba(61,255,138,.15);padding:30px 24px 24px;position:relative;cursor:pointer;user-select:none;
+ display:flex;align-items:center;transition:box-shadow .15s,background .15s}
+#mainBox:hover,#mainBox:focus{outline:none;background:#0f1a14;box-shadow:0 0 28px rgba(61,255,138,.3)}
+#status{position:absolute;top:8px;left:12px;font-size:10px;letter-spacing:.15em;color:var(--dim)}
+#boxContent{width:100%;font-size:20px;font-weight:700;line-height:1.35;white-space:pre-wrap;word-break:break-word;text-align:left}
+#elapsed{margin:22px 0 0;font-size:13px;font-weight:500;font-variant-numeric:tabular-nums;letter-spacing:.05em}
+#tokenDots{display:flex;gap:6px;margin-top:14px}
+.dot{width:10px;height:10px;border:1px solid var(--g);border-radius:2px}
+.dot.on{background:var(--g);box-shadow:0 0 6px var(--g)}
+#tokenText{margin:6px 0 0;font-size:11px;color:var(--dim);font-variant-numeric:tabular-nums}
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);display:flex;align-items:center;justify-content:center;padding:16px;z-index:50}
+.modal{width:100%;max-width:320px;background:var(--panel);border:1px solid var(--g);border-radius:3px;padding:24px;
+ box-shadow:0 0 30px rgba(61,255,138,.2);display:flex;flex-direction:column;align-items:center}
+.modal.wide{max-width:440px;align-items:stretch}
+.modal h2{margin:0 0 6px;font-size:15px;letter-spacing:.12em;text-transform:uppercase}
+.modal h2::before{content:'> ';color:var(--dim)}
+.desc{margin:0 0 6px;font-size:11px;color:var(--dim);text-align:center;line-height:1.5}
+.wide .desc{text-align:left;margin-bottom:14px}
+.tok{margin:0 0 12px;font-size:11px;font-variant-numeric:tabular-nums;text-align:center}
+input,textarea{background:#050806;color:var(--g);border:1px solid var(--line);border-radius:3px;font-family:inherit;outline:none}
+input:focus,textarea:focus{border-color:var(--g);box-shadow:0 0 8px rgba(61,255,138,.3)}
+input{width:170px;text-align:center;font-size:26px;letter-spacing:.5em;padding:8px 0 8px .5em;font-weight:700}
+input::placeholder,textarea::placeholder{color:#27483a}
+textarea{width:100%;padding:12px;font-size:16px;font-weight:700;line-height:1.4;resize:none}
+.err{margin:8px 0 0;min-height:16px;font-size:11px;color:var(--red);text-align:center}
+.btns{display:flex;gap:8px;width:100%;margin-top:16px}
+button{flex:1;padding:10px 0;font-family:inherit;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+ border-radius:3px;cursor:pointer;transition:background .15s,color .15s}
+.ghost{background:transparent;color:var(--dim);border:1px solid var(--line)}
+.ghost:hover{color:var(--g);border-color:var(--g)}
+.solid{background:var(--g);color:#04110a;border:1px solid var(--g)}
+.solid:hover{background:#7dffb1}
+#rain{position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none;opacity:.11;
+ -webkit-mask-image:radial-gradient(ellipse at center,transparent 22%,#000 85%);mask-image:radial-gradient(ellipse at center,transparent 22%,#000 85%)}
+
+/* 스캔라인 40% 효과 */
+body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:100;
+ background:repeating-linear-gradient(to bottom,rgba(0,0,0,.40) 0,rgba(0,0,0,.40) 1px,transparent 1px,transparent 3px)}
+
+h1,.wrap{position:relative;z-index:1}
+@keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}
+.animate-shake{animation:shake .25s ease-in-out 0s 2}
+</style>
+</head>
+<body>
+
+<canvas id="rain" aria-hidden="true"></canvas>
+<h1>Hacking Game</h1>
+
+<div class="wrap">
+  <div id="mainBox" role="button" tabindex="0" aria-label="Click to enter text in the box">
+    <span id="status">STATUS: UNCLAIMED</span>
+    <div id="boxContent">Type your text
+here.</div>
+  </div>
+  <p id="elapsed">Time elapsed: 00:00:00</p>
+  <div id="tokenDots" aria-hidden="true"></div>
+  <p id="tokenText"></p>
+</div>
+
+<!-- Step 1: PIN -->
+<div id="verifyModal" class="overlay hidden">
+  <div id="verifyBox" class="modal">
+    <h2>Enter PIN</h2>
+    <p id="verifyDesc" class="desc">Enter the 4-digit PIN.</p>
+    <p id="verifyTokens" class="tok"></p>
+    <input id="verifyPinInput" type="password" inputmode="numeric" maxlength="4" placeholder="••••" autocomplete="off">
+    <p id="verifyError" class="err"></p>
+    <div class="btns">
+      <button id="verifyCancelBtn" type="button" class="ghost">Cancel</button>
+      <button id="verifyConfirmBtn" type="button" class="solid">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<!-- Step 2: Editor -->
+<div id="editorModal" class="overlay hidden">
+  <div class="modal wide">
+    <h2>Write / Edit</h2>
+    <p class="desc">Write whatever you'd like to show inside the box.</p>
+    <textarea id="editorTextarea" rows="5" placeholder="Type your text here."></textarea>
+    <div class="btns">
+      <button id="editorCancelBtn" type="button" class="ghost">Cancel</button>
+      <button id="editorNextBtn" type="button" class="solid">Done</button>
+    </div>
+  </div>
+</div>
+
+<!-- Step 3: New PIN -->
+<div id="resetModal" class="overlay hidden">
+  <div id="resetBox" class="modal">
+    <h2>Set New PIN</h2>
+    <p class="desc" style="margin-bottom:14px">Choose a new 4-digit PIN<br>for the next person to open the box.</p>
+    <input id="resetPinInput" type="password" inputmode="numeric" maxlength="4" placeholder="••••" autocomplete="off">
+    <p id="resetError" class="err"></p>
+    <div class="btns">
+      <button id="resetBackBtn" type="button" class="ghost">Back</button>
+      <button id="resetFinishBtn" type="button" class="solid">Finish</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const socket = io();
+
+const DEFAULT_TEXT = 'Type your text\nhere.';
+const MAX_TOKENS = 5;
+const REFILL_MS = 10 * 60 * 1000;
+
+const $ = (id) => document.getElementById(id);
+const mainBox = $('mainBox'), boxContent = $('boxContent'), statusEl = $('status');
+const elapsedEl = $('elapsed'), tokenDots = $('tokenDots'), tokenText = $('tokenText');
+const verifyModal = $('verifyModal'), verifyBox = $('verifyBox'), verifyDesc = $('verifyDesc');
+const verifyTokens = $('verifyTokens'), verifyPinInput = $('verifyPinInput'), verifyError = $('verifyError');
+const verifyCancelBtn = $('verifyCancelBtn'), verifyConfirmBtn = $('verifyConfirmBtn');
+const editorModal = $('editorModal'), editorTextarea = $('editorTextarea');
+const editorCancelBtn = $('editorCancelBtn'), editorNextBtn = $('editorNextBtn');
+const resetModal = $('resetModal'), resetBox = $('resetBox'), resetPinInput = $('resetPinInput');
+const resetError = $('resetError'), resetBackBtn = $('resetBackBtn'), resetFinishBtn = $('resetFinishBtn');
+
+let isLocked = false;
+let textSince = Date.now();
+let tokens = MAX_TOKENS;
+let lastRefill = Date.now();
+
+const pad = (n) => String(n).padStart(2, '0');
+
+socket.on('syncState', (data) => {
+  boxContent.textContent = data.boxText;
+  textSince = data.textSince;
+  statusEl.textContent = data.status;
+  isLocked = data.isLocked;
+  if (data.tokens !== undefined) {
+    tokens = data.tokens;
+    lastRefill = data.lastRefill;
+  }
+  renderElapsed();
+  renderTokens();
+});
+
+// Matrix Rain Background
+(function () {
+  const cv = $('rain'), ctx = cv.getContext('2d');
+  const FS = 16, CHARS = '01ABCDEF<>/{}$#';
+  let cols, drops;
+  function resize() {
+    cv.width = innerWidth; cv.height = innerHeight;
+    cols = Math.ceil(cv.width / FS);
+    drops = Array.from({ length: cols }, () => Math.random() * -50);
+  }
+  resize();
+  addEventListener('resize', resize);
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  ctx.font = FS + 'px "JetBrains Mono", monospace';
+  setInterval(() => {
+    ctx.fillStyle = 'rgba(7,11,9,0.12)';
+    ctx.fillRect(0, 0, cv.width, cv.height);
+    ctx.fillStyle = '#3dff8a';
+    for (let i = 0; i < cols; i++) {
+      if (drops[i] > 0) ctx.fillText(CHARS[Math.floor(Math.random() * CHARS.length)], i * FS, drops[i] * FS);
+      if (drops[i] * FS > cv.height && Math.random() > 0.975) drops[i] = 0;
+      drops[i] += 0.5;
+    }
+  }, 60);
+})();
+
+// 토큰 시간 경과 클라이언트 렌더링
+function refillTokensClient() {
+  const now = Date.now();
+  if (tokens >= MAX_TOKENS) {
+    tokens = MAX_TOKENS;
+    lastRefill = now;
+    return;
+  }
+  const gained = Math.floor((now - lastRefill) / REFILL_MS);
+  if (gained > 0) {
+    tokens = Math.min(MAX_TOKENS, tokens + gained);
+    lastRefill += gained * REFILL_MS;
+    if (tokens >= MAX_TOKENS) lastRefill = now;
+  }
+}
+
+function tokenInfoText() {
+  if (tokens >= MAX_TOKENS) return `Tokens: ${tokens}/${MAX_TOKENS} (full)`;
+  const s = Math.ceil(Math.max(0, REFILL_MS - (Date.now() - lastRefill)) / 1000);
+  return `Tokens: ${tokens}/${MAX_TOKENS} · Next in ${pad(Math.floor(s / 60))}:${pad(s % 60)}`;
+}
+
+function renderTokens() {
+  tokenDots.innerHTML = '';
+  for (let i = 0; i < MAX_TOKENS; i++) {
+    const d = document.createElement('span');
+    d.className = 'dot' + (i < tokens ? ' on' : '');
+    tokenDots.appendChild(d);
+  }
+  const info = tokenInfoText();
+  tokenText.textContent = info;
+  verifyTokens.textContent = !isLocked ? '' : info;
+}
+
+function renderElapsed() {
+  const t = Math.max(0, Math.floor((Date.now() - textSince) / 1000));
+  elapsedEl.textContent = `Time elapsed: ${pad(Math.floor(t / 3600))}:${pad(Math.floor((t % 3600) / 60))}:${pad(t % 60)}`;
+}
+
+function tick() {
+  refillTokensClient();
+  renderTokens();
+  renderElapsed();
+}
+setInterval(tick, 1000);
+tick();
+
+function enforceNumericPin(input, errorEl) {
+  input.addEventListener('input', () => {
+    input.value = input.value.replace(/[^0-9]/g, '').slice(0, 4);
+    if (errorEl) errorEl.textContent = '';
+  });
+}
+enforceNumericPin(verifyPinInput, verifyError);
+enforceNumericPin(resetPinInput, resetError);
+
+function triggerShakeError(box, errorEl, message, input) {
+  errorEl.textContent = message;
+  box.classList.remove('animate-shake');
+  void box.offsetWidth;
+  box.classList.add('animate-shake');
+  input.focus();
+}
+
+function closeAllModals() {
+  verifyModal.classList.add('hidden');
+  editorModal.classList.add('hidden');
+  resetModal.classList.add('hidden');
+  verifyPinInput.value = '';
+  resetPinInput.value = '';
+  verifyError.textContent = '';
+  resetError.textContent = '';
+}
+
+function openVerifyModal() {
+  closeAllModals();
+  verifyModal.classList.remove('hidden');
+  verifyDesc.textContent = !isLocked
+    ? 'The box is unclaimed. Enter any 4 digits.'
+    : 'Enter the 4-digit PIN. Each attempt costs 1 token.';
+  renderTokens();
+  requestAnimationFrame(() => verifyPinInput.focus());
+}
+
+function handleVerifyConfirm() {
+  const val = verifyPinInput.value;
+  if (!/^\d{4}$/.test(val)) {
+    triggerShakeError(verifyBox, verifyError, 'Please enter exactly 4 digits.', verifyPinInput);
+    return;
+  }
+
+  // 서버로 검증 요청 (서버가 직접 토큰 차감 및 판정)
+  socket.emit('tryUnlock', val, (res) => {
+    if (res.tokens !== undefined) {
+      tokens = res.tokens;
+      lastRefill = res.lastRefill;
+      renderTokens();
+    }
+
+    if (res.success) {
+      openEditorModal();
+    } else {
+      if (res.noTokens) {
+        triggerShakeError(verifyBox, verifyError, 'No tokens left. Wait for the next recharge.', verifyPinInput);
+      } else {
+        const msg = tokens > 0
+          ? `Incorrect PIN. ${tokens} token${tokens === 1 ? '' : 's'} left.`
+          : 'Incorrect PIN. No tokens left.';
+        triggerShakeError(verifyBox, verifyError, msg, verifyPinInput);
+        verifyPinInput.value = '';
+      }
+    }
+  });
+}
+
+function openEditorModal() {
+  verifyModal.classList.add('hidden');
+  resetModal.classList.add('hidden');
+  editorModal.classList.remove('hidden');
+  editorTextarea.value = (boxContent.textContent === DEFAULT_TEXT) ? '' : boxContent.textContent;
+  requestAnimationFrame(() => {
+    editorTextarea.focus();
+    editorTextarea.setSelectionRange(editorTextarea.value.length, editorTextarea.value.length);
+  });
+}
+
+function handleEditorNext() {
+  editorModal.classList.add('hidden');
+  resetModal.classList.remove('hidden');
+  resetPinInput.value = '';
+  resetError.textContent = '';
+  requestAnimationFrame(() => resetPinInput.focus());
+}
+
+function handleResetFinish() {
+  const newPin = resetPinInput.value;
+  if (!/^\d{4}$/.test(newPin)) {
+    triggerShakeError(resetBox, resetError, 'Please enter a new 4-digit PIN.', resetPinInput);
+    return;
+  }
+  const newText = editorTextarea.value;
+
+  socket.emit('claimBox', { newText, newPin }, (res) => {
+    if (res.success) {
+      closeAllModals();
+    } else {
+      triggerShakeError(resetBox, resetError, res.message || 'Error occurred.', resetPinInput);
+    }
+  });
+}
+
+mainBox.addEventListener('click', openVerifyModal);
+mainBox.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openVerifyModal(); }
+});
+verifyConfirmBtn.addEventListener('click', handleVerifyConfirm);
+verifyCancelBtn.addEventListener('click', closeAllModals);
+verifyPinInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); handleVerifyConfirm(); }
+  else if (e.key === 'Escape') closeAllModals();
+});
+editorNextBtn.addEventListener('click', handleEditorNext);
+editorCancelBtn.addEventListener('click', closeAllModals);
+editorTextarea.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeAllModals(); });
+resetFinishBtn.addEventListener('click', handleResetFinish);
+resetBackBtn.addEventListener('click', () => {
+  resetModal.classList.add('hidden');
+  editorModal.classList.remove('hidden');
+  requestAnimationFrame(() => editorTextarea.focus());
+});
+resetPinInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); handleResetFinish(); }
+  else if (e.key === 'Escape') closeAllModals();
+});
+</script>
+</body>
+</html>
